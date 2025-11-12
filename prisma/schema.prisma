@@ -1,0 +1,372 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+// ========================================
+// ENUMS EXISTENTES
+// ========================================
+
+enum Role {
+  USER
+  OPERATOR
+  ADMIN
+}
+
+enum RoomType {
+  SUITE_SINGLE
+  SUITE_DOUBLE
+  VILLA_PETIT
+  VILLA_GRANDE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  CLEANING
+  CLOSED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED
+}
+
+enum ConsultationStatus {
+  PENDING
+  IN_REVIEW
+  RESOLVED
+  ARCHIVED
+}
+
+enum NewsletterCategory {
+  PROMOCIONES
+  NOVEDADES
+  EVENTOS
+  TEMPORADA
+  CONSEJOS
+  GENERAL
+}
+
+enum ServiceType {
+  SPA                  
+  EXPERIENCE           
+}
+
+enum ServiceCategory {
+  // Spa Categories
+  SPIRITUAL_ILLUMINATION
+  PHYSICAL_OPTIMISATION
+  MENTAL_EQUILIBRIUM
+
+  // Experience Categories
+  CULINARY_EXPERIENCE      
+  NATURE_CULTURE          
+  WINE_EXPERIENCE          
+  RELAXATION_NATURE        
+}
+
+enum ServiceBookingStatus {
+  PENDING              
+  CONFIRMED           
+  IN_PROGRESS        
+  COMPLETED           
+  CANCELLED         
+  NO_SHOW              
+}
+
+enum ServicePaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REFUNDED           
+}
+
+// ========================================
+// MODELOS EXISTENTES
+// ========================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      Role     @default(USER)
+  phone     String?
+  active    Boolean  @default(true) 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reservations      Reservation[]
+  consultations     Consultation[]
+  payments          Payment[]
+  newsletters       Newsletter[]
+  serviceBookings   ServiceBooking[]
+  servicePayments   ServicePayment[]
+
+  @@map("users")
+}
+
+model Room {
+  id          String     @id @default(cuid())
+  number      String     @unique
+  type        RoomType
+  price       Float
+  capacity    Int
+  floor       Int
+  amenities   String[]
+  images      String[]
+  description String?
+  status      RoomStatus @default(AVAILABLE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  reservations Reservation[]
+
+  @@map("rooms")
+}
+
+model Reservation {
+  id              String            @id @default(cuid())
+  checkIn         DateTime
+  checkOut        DateTime
+  totalPrice      Float
+  guests          Int
+  status          ReservationStatus @default(PENDING)
+  specialRequests String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roomId String
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Restrict)
+
+  payment Payment?
+  
+  serviceBookings ServiceBooking[]
+
+  @@map("reservations")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  amount          Float
+  currency        String        @default("ARS")
+  status          PaymentStatus @default(PENDING)
+  paymentMethod   String?
+  transactionId   String?       @unique
+  mercadoPagoId   String?
+  mercadoPagoData Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  reservationId String      @unique
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Consultation {
+  id          String             @id @default(cuid())
+  name        String
+  email       String
+  subject     String
+  message     String
+  phone       String?
+  bookingCode String?            @db.VarChar(32)
+  status      ConsultationStatus @default(PENDING)
+  createdAt   DateTime           @default(now())
+  
+  response    String?
+  respondedAt DateTime?
+  
+  sourceIp    String?
+  userAgent   String?
+  referer     String?
+
+  userId String?
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("consultations")
+  @@index([email, createdAt])
+  @@index([status])
+}
+
+model Newsletter {
+  id        String             @id @default(cuid())
+  subject   String
+  content   String             @db.Text
+  category  NewsletterCategory @default(GENERAL)
+  sentTo    Int
+  sentAt    DateTime           @default(now())
+  sentBy    String
+  sender    User               @relation(fields: [sentBy], references: [id])
+  
+  @@map("newsletters")
+}
+
+model Subscriber {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  active            Boolean   @default(true)
+  unsubscribeToken  String    @unique @default(cuid())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deactivatedAt     DateTime?
+
+  @@map("subscribers")
+}
+
+model HotelService {
+  id              String          @id @default(cuid())
+  name            String
+  description     String          @db.Text
+  shortDescription String?
+  type            ServiceType     
+  category        ServiceCategory
+  
+  price           Float         
+  pricePerPerson  Boolean         @default(true)
+  
+  duration        Int          
+  minCapacity     Int             @default(1)
+  maxCapacity     Int           
+  
+  isActive        Boolean         @default(true)
+  availableDays   String[]       
+  startTime       String        
+  endTime         String        
+  slotInterval    Int             @default(60) 
+  
+  images          String[]
+  mainImage       String?
+  
+  requiresReservation Boolean     @default(true) 
+  advanceBookingHours Int         @default(24)  
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  bookings        ServiceBooking[]
+  timeSlots       ServiceTimeSlot[]
+
+  @@map("hotel_services")
+  @@index([type, category])
+  @@index([isActive])
+}
+
+model ServiceTimeSlot {
+  id          String   @id @default(cuid())
+  
+  serviceId   String
+  service     HotelService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  date        DateTime 
+  startTime   String   
+  endTime     String  
+  
+  capacity    Int     
+  booked      Int      @default(0) 
+  
+  isAvailable Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  bookings    ServiceBooking[]
+
+  @@map("service_time_slots")
+  @@index([serviceId, date])
+  @@index([date, isAvailable])
+}
+
+model ServiceBooking {
+  id              String               @id @default(cuid())
+  serviceId       String
+  service         HotelService         @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  
+  timeSlotId      String?
+  timeSlot        ServiceTimeSlot?     @relation(fields: [timeSlotId], references: [id], onDelete: SetNull)
+  
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  reservationId   String              
+  reservation     Reservation          @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  
+  bookingDate     DateTime           
+  bookingTime     String            
+  participants    Int                 
+  totalPrice      Float
+  
+  status          ServiceBookingStatus @default(PENDING)
+  
+  specialRequests String?              @db.Text
+  staffNotes      String?              @db.Text
+  
+  payment         ServicePayment?
+  
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+
+  @@map("service_bookings")
+  @@index([userId])
+  @@index([reservationId])
+  @@index([serviceId, bookingDate])
+  @@index([status])
+}
+
+model ServicePayment {
+  id              String               @id @default(cuid())
+  
+  bookingId       String               @unique
+  booking         ServiceBooking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount          Float
+  currency        String               @default("ARS")
+  status          ServicePaymentStatus @default(PENDING)
+  
+  paymentMethod   String?
+  transactionId   String?
+  mercadoPagoId   String?
+  mercadoPagoData Json?
+  
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  paidAt          DateTime?
+
+  @@map("service_payments")
+  @@index([userId])
+  @@index([status])
+  @@index([transactionId])
+}
